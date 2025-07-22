@@ -6,6 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Search, Loader2, Users, GraduationCap } from "lucide-react";
 import type { IStudent } from "@/models/Student";
+import {
+  normalizeArabicText,
+  generateArabicNameVariations,
+  arabicTextMatches,
+} from "@/lib/arabic-normalizer";
 
 export default function Home() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -42,19 +47,111 @@ export default function Home() {
     }
   };
 
-  // Remove debounced search. Only search on button click.
-
-  // Add highlightMatch function
+  // Enhanced Arabic-aware highlight function
   function highlightMatch(text: string | undefined, term: string) {
     if (!text || !term) return text;
-    // Escape special regex characters in the term
-    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(`(${escapedTerm})`, "gi");
-    const highlighted = text.replace(
-      regex,
-      '<mark style="background: #fde047; color: #000; border-radius: 0.25rem; padding: 0 0.2em;">$1</mark>'
-    );
-    return <span dangerouslySetInnerHTML={{ __html: highlighted }} />;
+
+    try {
+      // For numeric searches (seating_no), use simple highlighting
+      if (/^\d+$/.test(term.trim())) {
+        const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const regex = new RegExp(`(${escapedTerm})`, "gi");
+        const highlighted = text.replace(
+          regex,
+          '<mark style="background: #fde047; color: #000; border-radius: 0.25rem; padding: 0 0.2em;">$1</mark>'
+        );
+        return <span dangerouslySetInnerHTML={{ __html: highlighted }} />;
+      }
+
+      // For Arabic text, use normalized matching
+      const normalizedText = normalizeArabicText(text);
+      const normalizedTerm = normalizeArabicText(term);
+
+      // If no match with normalized text, return original
+      if (!normalizedText.includes(normalizedTerm)) {
+        // Try with Arabic variations
+        const variations = generateArabicNameVariations(term);
+        let hasMatch = false;
+
+        for (const variation of variations) {
+          const normalizedVariation = normalizeArabicText(variation);
+          if (normalizedText.includes(normalizedVariation)) {
+            hasMatch = true;
+            break;
+          }
+        }
+
+        if (!hasMatch) {
+          return text;
+        }
+      }
+
+      // Create a flexible pattern for highlighting
+      let highlighted = text;
+
+      // Try to highlight the original term first
+      const escapedOriginal = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      let regex = new RegExp(`(${escapedOriginal})`, "gi");
+      highlighted = highlighted.replace(
+        regex,
+        '<mark style="background: #fde047; color: #000; border-radius: 0.25rem; padding: 0 0.2em;">$1</mark>'
+      );
+
+      // If original term didn't match, try Arabic variations
+      if (!highlighted.includes("<mark>")) {
+        const variations = generateArabicNameVariations(term);
+
+        for (const variation of variations) {
+          if (variation !== term) {
+            // Skip the original term we already tried
+            const escaped = variation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            regex = new RegExp(`(${escaped})`, "gi");
+            highlighted = highlighted.replace(
+              regex,
+              '<mark style="background: #fde047; color: #000; border-radius: 0.25rem; padding: 0 0.2em;">$1</mark>'
+            );
+
+            // If we found a match, break
+            if (highlighted.includes("<mark>")) {
+              break;
+            }
+          }
+        }
+      }
+
+      // If still no highlight, try character-by-character fuzzy matching for Arabic
+      if (!highlighted.includes("<mark>") && /[\u0600-\u06FF]/.test(text)) {
+        // Create a more flexible Arabic pattern
+        const arabicPattern = normalizedTerm
+          .replace(/ا/g, "[اأإآ]")
+          .replace(/ي/g, "[يى]")
+          .replace(/ه/g, "[هة]")
+          .replace(/\s+/g, "\\s*");
+
+        try {
+          regex = new RegExp(`(${arabicPattern})`, "gi");
+          highlighted = text.replace(
+            regex,
+            '<mark style="background: #fde047; color: #000; border-radius: 0.25rem; padding: 0 0.2em;">$1</mark>'
+          );
+        } catch (regexError) {
+          // If regex fails, just return the original text
+          console.warn("Regex pattern failed:", regexError);
+        }
+      }
+
+      return <span dangerouslySetInnerHTML={{ __html: highlighted }} />;
+    } catch (error) {
+      console.warn("Highlighting failed, using fallback:", error);
+      // Fallback to simple highlighting
+      const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(`(${escapedTerm})`, "gi");
+      const highlighted = text.replace(
+        regex,
+        '<mark style="background: #fde047; color: #000; border-radius: 0.25rem; padding: 0 0.2em;">$1</mark>'
+      );
+      return <span dangerouslySetInnerHTML={{ __html: highlighted }} />;
+    }
   }
 
   return (
@@ -83,14 +180,20 @@ export default function Home() {
                 placeholder="ابحث برقم الجلوس أو اسم الطالب..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    searchStudents(searchTerm);
+                  }
+                }}
                 className="pl-12 pr-4 text-right text-lg h-12"
                 dir="rtl"
               />
               <button
-                className="ml-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                className="ml-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={() => searchStudents(searchTerm)}
+                disabled={loading}
               >
-                بحث
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "بحث"}
               </button>
             </div>
           </CardContent>
@@ -123,6 +226,9 @@ export default function Home() {
                 <p className="text-muted-foreground text-lg">
                   ابدأ بكتابة رقم الجلوس أو اسم الطالب للبحث
                 </p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  يمكنك البحث بأشكال مختلفة للأحرف العربية (أ، إ، آ، ا)
+                </p>
               </div>
             ) : results.length === 0 ? (
               <div className="text-center py-12">
@@ -131,7 +237,7 @@ export default function Home() {
                   لا توجد نتائج مطابقة للبحث
                 </p>
                 <p className="text-sm text-muted-foreground mt-2">
-                  جرب البحث بكلمات مختلفة
+                  جرب البحث بكلمات مختلفة أو تأكد من صحة رقم الجلوس
                 </p>
               </div>
             ) : (
@@ -139,7 +245,7 @@ export default function Home() {
                 {results.map((student) => (
                   <Card
                     key={student._id}
-                    className="hover:shadow-md transition-shadow"
+                    className="hover:shadow-md transition-shadow border-l-4 border-l-blue-500"
                   >
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between">
