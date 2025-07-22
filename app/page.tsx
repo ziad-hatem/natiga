@@ -1,0 +1,185 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Search, Loader2, Users, GraduationCap } from "lucide-react";
+import type { IStudent } from "@/models/Student";
+
+export default function Home() {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [results, setResults] = useState<IStudent[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  const searchStudents = async (query: string) => {
+    if (!query.trim()) {
+      setResults([]);
+      setHasSearched(false);
+      return;
+    }
+
+    setLoading(true);
+    setHasSearched(true);
+
+    try {
+      const params = new URLSearchParams({ q: query });
+      const response = await fetch(`/api/search?${params}`);
+      const data = await response.json();
+
+      if (response.ok) {
+        setResults(data.results);
+      } else {
+        console.error("Search failed:", data.error);
+        setResults([]);
+      }
+    } catch (error) {
+      console.error("Search error:", error);
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Remove debounced search. Only search on button click.
+
+  // Add highlightMatch function
+  function highlightMatch(text: string | undefined, term: string) {
+    if (!text || !term) return text;
+    // Escape special regex characters in the term
+    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`(${escapedTerm})`, "gi");
+    const highlighted = text.replace(
+      regex,
+      '<mark style="background: #fde047; color: #000; border-radius: 0.25rem; padding: 0 0.2em;">$1</mark>'
+    );
+    return <span dangerouslySetInnerHTML={{ __html: highlighted }} />;
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <GraduationCap className="w-8 h-8 text-blue-600" />
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+              البحث في نتائج الطلاب
+            </h1>
+          </div>
+          <p className="text-gray-600 dark:text-gray-300">
+            ابحث عن الطلاب باستخدام رقم الجلوس أو الاسم
+          </p>
+        </div>
+
+        {/* Search Input */}
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <div className="relative flex gap-2 items-center">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
+              <Input
+                type="text"
+                placeholder="ابحث برقم الجلوس أو اسم الطالب..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-12 pr-4 text-right text-lg h-12"
+                dir="rtl"
+              />
+              <button
+                className="ml-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                onClick={() => searchStudents(searchTerm)}
+              >
+                بحث
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Results */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5" />
+                النتائج
+              </CardTitle>
+              {results.length > 0 && (
+                <Badge variant="secondary">{results.length} طالب</Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
+                  <p className="text-muted-foreground">جاري البحث...</p>
+                </div>
+              </div>
+            ) : !hasSearched ? (
+              <div className="text-center py-12">
+                <Search className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                <p className="text-muted-foreground text-lg">
+                  ابدأ بكتابة رقم الجلوس أو اسم الطالب للبحث
+                </p>
+              </div>
+            ) : results.length === 0 ? (
+              <div className="text-center py-12">
+                <Users className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                <p className="text-muted-foreground text-lg">
+                  لا توجد نتائج مطابقة للبحث
+                </p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  جرب البحث بكلمات مختلفة
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {results.map((student) => (
+                  <Card
+                    key={student._id}
+                    className="hover:shadow-md transition-shadow"
+                  >
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-4 mb-2">
+                            <Badge
+                              variant="outline"
+                              className="text-sm font-mono"
+                            >
+                              رقم الجلوس:{" "}
+                              {highlightMatch(student.seating_no, searchTerm)}
+                            </Badge>
+                          </div>
+                          <h3
+                            className="text-xl font-semibold text-right mb-2"
+                            dir="rtl"
+                          >
+                            {highlightMatch(student.arabic_name, searchTerm)}
+                          </h3>
+                        </div>
+                        <div className="text-left">
+                          <div className="text-sm text-muted-foreground mb-1">
+                            المجموع الكلي
+                          </div>
+                          <Badge
+                            variant={"default"}
+                            className="text-lg px-3 py-1 text-white"
+                          >
+                            {student.total_degree}
+                          </Badge>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
