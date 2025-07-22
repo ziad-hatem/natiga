@@ -92,7 +92,6 @@ export async function GET(request: NextRequest) {
 
     const results = await Student.find(searchQuery)
       .sort({ seating_no: 1 })
-      .limit(50)
       .lean();
 
     return NextResponse.json({
