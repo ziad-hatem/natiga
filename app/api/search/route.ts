@@ -7,8 +7,20 @@ import {
   createFlexibleArabicPattern,
 } from "@/lib/arabic-normalizer";
 import SearchQuery from "@/models/SearchQuery";
+import jwt from "jsonwebtoken";
+
+const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
 
 export async function GET(request: NextRequest) {
+  // JWT token validation
+  const token = request.headers.get("x-pre-request-token");
+  try {
+    if (!token) throw new Error("No token");
+    jwt.verify(token, JWT_SECRET);
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get("q");

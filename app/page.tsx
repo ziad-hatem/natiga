@@ -17,6 +17,25 @@ export default function Home() {
   const [results, setResults] = useState<IStudent[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
+
+  // Fetch a new JWT token
+  const fetchToken = async () => {
+    try {
+      const res = await fetch("/api/token");
+      const data = await res.json();
+      setToken(data.token);
+      return data.token;
+    } catch {
+      setToken(null);
+      return null;
+    }
+  };
+
+  // Optionally fetch token on mount
+  useEffect(() => {
+    fetchToken();
+  }, []);
 
   const searchStudents = async (query: string) => {
     if (!query.trim()) {
@@ -29,18 +48,40 @@ export default function Home() {
     setHasSearched(true);
 
     try {
+      let jwtToken = token;
+      if (!jwtToken) {
+        jwtToken = await fetchToken();
+      }
       const params = new URLSearchParams({ q: query });
-      const response = await fetch(`/api/search?${params}`);
+      const response = await fetch(`/api/search?${params}`, {
+        headers: {
+          "x-pre-request-token": jwtToken || "",
+        },
+      });
+      // If unauthorized, try to refresh token and retry once
+      if (response.status === 401) {
+        jwtToken = await fetchToken();
+        const retryResponse = await fetch(`/api/search?${params}`, {
+          headers: {
+            "x-pre-request-token": jwtToken || "",
+          },
+        });
+        const retryData = await retryResponse.json();
+        if (retryResponse.ok) {
+          setResults(retryData.results);
+        } else {
+          setResults([]);
+        }
+        setLoading(false);
+        return;
+      }
       const data = await response.json();
-
       if (response.ok) {
         setResults(data.results);
       } else {
-        console.error("Search failed:", data.error);
         setResults([]);
       }
     } catch (error) {
-      console.error("Search error:", error);
       setResults([]);
     } finally {
       setLoading(false);
