@@ -104,6 +104,7 @@ export async function GET(request: NextRequest) {
 
     const results = await Student.find(searchQuery)
       .sort({ seating_no: 1 })
+      .limit(50)  // Add limit to prevent excessive results
       .lean();
 
     return NextResponse.json({
@@ -133,69 +134,5 @@ export async function GET(request: NextRequest) {
       },
       { status: 500 }
     );
-  }
-}
-
-// Alternative simpler version if the above is too complex
-export async function GET_SIMPLE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const query = searchParams.get("q");
-
-    await dbConnect();
-
-    let searchQuery = {};
-
-    if (query && query.trim()) {
-      // Log the search query
-      try {
-        await SearchQuery.create({ term: query.trim() });
-      } catch (e) {
-        console.error("Failed to log search query:", e);
-      }
-
-      const trimmedQuery = query.trim();
-      const normalizedQuery = normalizeArabicText(trimmedQuery);
-
-      searchQuery = {
-        $or: [
-          // Seating number search
-          { seating_no: { $regex: trimmedQuery, $options: "i" } },
-          // Original Arabic name
-          { arabic_name: { $regex: trimmedQuery, $options: "i" } },
-          // Normalized Arabic name
-          { arabic_name: { $regex: normalizedQuery, $options: "i" } },
-          // Basic Arabic variations
-          {
-            arabic_name: {
-              $regex: trimmedQuery.replace(/أ|إ|آ/g, "ا"),
-              $options: "i",
-            },
-          },
-          {
-            arabic_name: {
-              $regex: trimmedQuery.replace(/ى/g, "ي"),
-              $options: "i",
-            },
-          },
-          {
-            arabic_name: {
-              $regex: trimmedQuery.replace(/ة/g, "ه"),
-              $options: "i",
-            },
-          },
-        ],
-      };
-    }
-
-    const results = await Student.find(searchQuery)
-      .sort({ seating_no: 1 })
-      .limit(50)
-      .lean();
-
-    return NextResponse.json({ results });
-  } catch (error) {
-    console.error("Search error:", error);
-    return NextResponse.json({ error: "Search failed" }, { status: 500 });
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +20,7 @@ export default function Home() {
   const [token, setToken] = useState<string | null>(null);
 
   // Fetch a new JWT token
-  const fetchToken = async () => {
+  const fetchToken = useCallback(async () => {
     try {
       const res = await fetch("/api/token");
       const data = await res.json();
@@ -30,12 +30,12 @@ export default function Home() {
       setToken(null);
       return null;
     }
-  };
+  }, []);
 
   // Optionally fetch token on mount
   useEffect(() => {
     fetchToken();
-  }, []);
+  }, [fetchToken]);
 
   const searchStudents = async (query: string) => {
     if (!query.trim()) {
@@ -52,12 +52,14 @@ export default function Home() {
       if (!jwtToken) {
         jwtToken = await fetchToken();
       }
+      
       const params = new URLSearchParams({ q: query });
       const response = await fetch(`/api/search?${params}`, {
         headers: {
           "x-pre-request-token": jwtToken || "",
         },
       });
+
       // If unauthorized, try to refresh token and retry once
       if (response.status === 401) {
         jwtToken = await fetchToken();
@@ -66,8 +68,9 @@ export default function Home() {
             "x-pre-request-token": jwtToken || "",
           },
         });
-        const retryData = await retryResponse.json();
+        
         if (retryResponse.ok) {
+          const retryData = await retryResponse.json();
           setResults(retryData.results);
         } else {
           setResults([]);
@@ -75,13 +78,15 @@ export default function Home() {
         setLoading(false);
         return;
       }
-      const data = await response.json();
+      
       if (response.ok) {
+        const data = await response.json();
         setResults(data.results);
       } else {
         setResults([]);
       }
     } catch (error) {
+      console.error("Search error:", error);
       setResults([]);
     } finally {
       setLoading(false);
@@ -195,6 +200,13 @@ export default function Home() {
     }
   }
 
+  // Handle search on Enter key press
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      searchStudents(searchTerm);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -221,11 +233,7 @@ export default function Home() {
                 placeholder="ابحث برقم الجلوس أو اسم الطالب..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    searchStudents(searchTerm);
-                  }
-                }}
+                onKeyDown={handleKeyPress}
                 className="pl-12 pr-4 text-right text-lg h-12"
                 dir="rtl"
               />
